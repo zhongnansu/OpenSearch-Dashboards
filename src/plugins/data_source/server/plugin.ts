@@ -3,19 +3,31 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { PluginInitializerContext, CoreSetup, CoreStart, Plugin, Logger } from 'src/core/server';
+import {
+  PluginInitializerContext,
+  CoreSetup,
+  CoreStart,
+  Plugin,
+  Logger,
+  IContextProvider,
+  RequestHandler,
+} from '../../../../src/core/server';
+import { DataSourceClient } from './client/data_source_client';
+import { DataSourceRouteHandlerContext } from './data_source_route_handler_context';
 import { dataSource, credential } from './saved_objects';
 
 import { DataSourcePluginSetup, DataSourcePluginStart } from './types';
 
 export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourcePluginStart> {
   private readonly logger: Logger;
+  private readonly dataSourceClient: DataSourceClient;
 
   constructor(initializerContext: PluginInitializerContext) {
     this.logger = initializerContext.logger.get();
+    this.dataSourceClient = new DataSourceClient(this.logger);
   }
 
-  public setup(core: CoreSetup) {
+  public async setup(core: CoreSetup) {
     this.logger.debug('data_source: Setup');
 
     // Register credential saved object type
@@ -23,6 +35,9 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
 
     // Register data source saved object type
     core.savedObjects.registerType(dataSource);
+
+    // Register plugin context to route handler context
+    core.http.registerRouteHandlerContext('data_source', this.createRouteHandlerContext(core));
 
     return {};
   }
@@ -32,5 +47,17 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
     return {};
   }
 
-  public stop() {}
+  public stop() {
+    this.dataSourceClient.close();
+  }
+
+  private createRouteHandlerContext = (
+    core: CoreSetup
+  ): IContextProvider<RequestHandler<unknown, unknown, unknown>, 'data_source'> => {
+    return async (context, req) => {
+      const [{ savedObjects }] = await core.getStartServices();
+      this.dataSourceClient.attachSavedObjectClient(savedObjects.getScopedClient(req));
+      return new DataSourceRouteHandlerContext(this.dataSourceClient, this.logger);
+    };
+  };
 }
