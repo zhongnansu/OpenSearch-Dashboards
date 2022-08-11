@@ -14,17 +14,17 @@ import {
 } from '../../../../src/core/server';
 import { DataSourceClient } from './client/data_source_client';
 import { DataSourceRouteHandlerContext } from './data_source_route_handler_context';
+import { DataSourceService } from './data_source_service';
 import { dataSource, credential } from './saved_objects';
 
 import { DataSourcePluginSetup, DataSourcePluginStart } from './types';
 
 export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourcePluginStart> {
   private readonly logger: Logger;
-  private readonly dataSourceClient: DataSourceClient;
+  private dataSourceService?: DataSourceService;
 
   constructor(initializerContext: PluginInitializerContext) {
     this.logger = initializerContext.logger.get();
-    this.dataSourceClient = new DataSourceClient(this.logger);
   }
 
   public setup(core: CoreSetup) {
@@ -35,6 +35,8 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
 
     // Register data source saved object type
     core.savedObjects.registerType(dataSource);
+
+    this.dataSourceService = new DataSourceService();
 
     // Register plugin context to route handler context
     core.http.registerRouteHandlerContext('data_source', this.createRouteHandlerContext(core));
@@ -48,7 +50,7 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
   }
 
   public stop() {
-    this.dataSourceClient.close();
+    this.dataSourceService!.stop();
   }
 
   private createRouteHandlerContext = (
@@ -56,8 +58,11 @@ export class DataSourcePlugin implements Plugin<DataSourcePluginSetup, DataSourc
   ): IContextProvider<RequestHandler<unknown, unknown, unknown>, 'data_source'> => {
     return async (context, req) => {
       const [{ savedObjects }] = await core.getStartServices();
-      this.dataSourceClient.attachScopedSavedObjectsClient(savedObjects.getScopedClient(req));
-      return new DataSourceRouteHandlerContext(this.dataSourceClient, this.logger);
+      const dataSourceClient = this.dataSourceService!.getDataSourceClient(
+        this.logger,
+        savedObjects.getScopedClient(req)
+      );
+      return new DataSourceRouteHandlerContext(dataSourceClient, this.logger);
     };
   };
 }
