@@ -49,6 +49,7 @@ export interface IIndexPattern {
   getFormatterForField?: (
     field: IndexPatternField | IndexPatternField['spec'] | IFieldType
   ) => FieldFormat;
+  dataSourceId?: string;
 }
 
 export interface IndexPatternAttributes {
@@ -60,6 +61,7 @@ export interface IndexPatternAttributes {
   intervalName?: string;
   sourceFilters?: string;
   fieldFormatMap?: string;
+  dataSourceId?: string;
 }
 
 export type OnNotification = (toastInputFields: ToastInputFields) => void;
@@ -194,6 +196,7 @@ export interface IndexPatternSpec {
   fields?: IndexPatternFieldMap;
   typeMeta?: TypeMeta;
   type?: string;
+  dataSourceId?: string;
 }
 
 export interface SourceFilter {

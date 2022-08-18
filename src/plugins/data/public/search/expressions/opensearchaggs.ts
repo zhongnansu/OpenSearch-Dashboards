@@ -148,6 +148,10 @@ const handleCourierRequest = async ({
   requestSearchSource.setField('filter', filters);
   requestSearchSource.setField('query', query);
 
+  const dataSourceId = indexPattern?.dataSourceId;
+  requestSearchSource.dataSourceId = dataSourceId ? dataSourceId : undefined;
+  console.log(`zhongnan data source id openearchaggs ${dataSourceId}`);
+
   inspectorAdapters.requests.reset();
   const request = inspectorAdapters.requests.start(
     i18n.translate('data.functions.opensearchaggs.inspector.dataRequest.title', {
