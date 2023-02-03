@@ -16,6 +16,11 @@ export interface CreateEditDataSourceValidation {
     username: string[];
     password: string[];
   };
+  awsCredential: {
+    region: string[];
+    accessKey: string[];
+    secretKey: string[];
+  };
 }
 
 export const defaultValidation: CreateEditDataSourceValidation = {
@@ -24,6 +29,11 @@ export const defaultValidation: CreateEditDataSourceValidation = {
   createCredential: {
     username: [],
     password: [],
+  },
+  awsCredential: {
+    region: [],
+    accessKey: [],
+    secretKey: [],
   },
 };
 
@@ -81,6 +91,22 @@ export const performDataSourceFormValidation = (
 
     /* password */
     if (!formValues.auth.credentials?.password) {
+      return false;
+    }
+  }
+  /* AWS Credential */
+  if (formValues?.auth?.type === AuthType.SigV4) {
+    /* Username */
+    if (!formValues.auth.credentials?.accessKey) {
+      return false;
+    }
+
+    /* password */
+    if (!formValues.auth.credentials?.secretKey) {
+      return false;
+    }
+
+    if (!formValues.auth.credentials?.region) {
       return false;
     }
   }
