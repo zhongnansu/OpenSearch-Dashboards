@@ -55,11 +55,15 @@ export const configureTestClient = async (
 
     const rootClient = getRootClient(dataSourceAttr, config, openSearchClientPoolSetup);
 
-    if (type === AuthType.UsernamePasswordType && !credentials?.password && dataSourceId) {
-      dataSourceAttr = await getDataSource(dataSourceId, savedObjects);
-      requireDecryption = true;
+    if (dataSourceId) {
+      if (
+        (type === AuthType.UsernamePasswordType && !credentials?.password) ||
+        (type === AuthType.SigV4 && !credentials?.accessKey && !credentials?.secretKey)
+      ) {
+        dataSourceAttr = await getDataSource(dataSourceId, savedObjects);
+        requireDecryption = true;
+      }
     }
-
     return getQueryClient(
       dataSourceAttr,
       openSearchClientPoolSetup,
@@ -226,7 +230,7 @@ export const getRootClient = (
     // we are storing/getting the actual client instead of rootClient in/from aws client pool,
     // by a key of endpoint + lastUpdatedTime
     cachedClient = getClientFromPool(endpoint + lastUpdatedTime, type);
-    return cachedClient ? (cachedClient as Client) : undefined;
+    return cachedClient && lastUpdatedTime ? (cachedClient as Client) : undefined;
   } else {
     cachedClient = getClientFromPool(endpoint, type);
     return cachedClient ? (cachedClient as Client) : new Client(clientOptions);
