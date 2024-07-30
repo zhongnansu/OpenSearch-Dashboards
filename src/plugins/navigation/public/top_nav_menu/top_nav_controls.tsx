@@ -28,39 +28,44 @@
  * under the License.
  */
 
+import React, { ReactElement } from 'react';
 import { EuiHeaderSectionItem } from '@elastic/eui';
-import React from 'react';
-import useObservable from 'react-use/lib/useObservable';
-import { Observable } from 'rxjs';
-import { ChromeNavControl } from '../../nav_controls';
-import { HeaderExtension } from './header_extension';
 
-interface Props {
-  navControls$: Observable<readonly ChromeNavControl[]>;
-    side?: 'left' | 'right';
-    className?: HTMLElement['className'];
+import { MountPoint } from 'opensearch-dashboards/public';
+import { MountPointPortal } from '../../../opensearch_dashboards_react/public';
+import { TopNavControlItem } from './top_nav_control_item';
+import { TopNavControlData } from './top_nav_control_data';
+
+export interface TopNavControlsProps {
+  controls?: TopNavControlData[];
+  className?: string;
+  setMountPoint?: (menuMount: MountPoint | undefined) => void;
 }
 
-export function HeaderNavControls({ navControls$, side, className }: Props) {
-  const navControls = useObservable(navControls$, []);
+export function TopNavControls(props: TopNavControlsProps): ReactElement | null {
+  const { controls } = props;
 
-  if (!navControls) {
+  if (!Array.isArray(controls) || controls.length === 0) {
     return null;
   }
 
-  // It should be performant to use the index as the key since these are unlikely
-  // to change while OpenSearch Dashboards is running.
-  return (
-    <>
-      {navControls.map((navControl: ChromeNavControl, index: number) => (
-        <EuiHeaderSectionItem
-          key={index}
-          border={side ? (side === 'left' ? 'right' : 'left') : 'none'}
-          className={className}
-        >
-          <HeaderExtension extension={navControl.mount} />
+  function renderItems(): ReactElement[] {
+    return controls!.map((menuItem: TopNavControlData, i: number) => {
+      return (
+        <EuiHeaderSectionItem border="none" key={`nav-control-${i}`}>
+          <TopNavControlItem {...menuItem} />
         </EuiHeaderSectionItem>
-      ))}
-    </>
-  );
+      );
+    });
+  }
+
+  function renderLayout() {
+    const { setMountPoint } = props;
+
+    return setMountPoint ? (
+      <MountPointPortal setMountPoint={setMountPoint}>{renderItems()}</MountPointPortal>
+    ) : null;
+  }
+
+  return renderLayout();
 }
