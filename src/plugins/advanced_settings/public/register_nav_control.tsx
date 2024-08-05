@@ -9,8 +9,8 @@ import { CoreStart } from 'opensearch-dashboards/public';
 import { OpenSearchDashboardsContextProvider } from '../../opensearch_dashboards_react/public';
 import { HeaderUserThemeMenu } from './header_user_theme_menu';
 
-export async function setupTopNavThemeButton(coreStart: CoreStart) {
-  coreStart.chrome.navControls.registerRight({
+export async function setupTopNavThemeButton(coreStart: CoreStart, legacyPlacement: boolean) {
+  coreStart.chrome.navControls[legacyPlacement ? 'registerRight' : 'registerLeftBottom']({
     order: 2001,
     mount: (element: HTMLElement) => {
       ReactDOM.render(
