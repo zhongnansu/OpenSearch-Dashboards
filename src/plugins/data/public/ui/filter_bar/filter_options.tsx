@@ -34,172 +34,317 @@ import {
   EuiPopover,
   EuiPopoverTitle,
   EuiToolTip,
+  EuiButton,
+  EuiPopoverFooter,
+  EuiFlexGroup,
+  EuiFlexItem,
+  EuiSpacer,
+  EuiSmallButtonEmpty,
+  EuiIcon,
+  EuiResizeObserver,
+  EuiContextMenuPanel,
 } from '@elastic/eui';
+import { stringify } from '@osd/std';
 import { FormattedMessage, InjectedIntl, injectI18n } from '@osd/i18n/react';
 import { Component } from 'react';
+import { i18n } from '@osd/i18n';
 import React from 'react';
+import {
+  buildEmptyFilter,
+  Filter,
+  enableFilter,
+  disableFilter,
+  pinFilter,
+  toggleFilterDisabled,
+  toggleFilterNegated,
+  unpinFilter,
+  UI_SETTINGS,
+  IIndexPattern,
+} from '../../../common';
+import { FilterEditor } from './filter_editor';
+import { useOpenSearchDashboards } from '../../../../opensearch_dashboards_react/public';
 
 interface Props {
-  onEnableAll: () => void;
-  onDisableAll: () => void;
-  onPinAll: () => void;
-  onUnpinAll: () => void;
-  onToggleAllNegated: () => void;
-  onToggleAllDisabled: () => void;
-  onRemoveAll: () => void;
   intl: InjectedIntl;
+  filters: Filter[];
+  indexPatterns: IIndexPattern[];
+  savedQueryManagement?: React.JSX.Element;
+  onFiltersUpdated?: (filters: Filter[]) => void;
 }
+const maxFilterWidth = 600;
 
-interface State {
-  isPopoverOpen: boolean;
-}
+const FilterOptionsUI = (props: Props) => {
+  const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
+  const [renderedComponent, setRenderedComponent] = React.useState('menu');
+  const [filterWidth, setFilterWidth] = React.useState(maxFilterWidth);
+  const [showSaveQueryButton, setShowSaveQueryButton] = React.useState(true);
+  const opensearchDashboards = useOpenSearchDashboards();
+  const uiSettings = opensearchDashboards.services.uiSettings;
+  const isPinned = uiSettings!.get(UI_SETTINGS.FILTERS_PINNED_BY_DEFAULT);
+  const [indexPattern] = props.indexPatterns;
+  const index = indexPattern && indexPattern.id;
+  const newFilter = buildEmptyFilter(isPinned, index);
 
-class FilterOptionsUI extends Component<Props, State> {
-  public state: State = {
-    isPopoverOpen: false,
+  const togglePopover = () => {
+    setRenderedComponent('menu');
+    setShowSaveQueryButton(true);
+    setIsPopoverOpen((prevState) => !prevState);
   };
 
-  public togglePopover = () => {
-    this.setState((prevState) => ({
-      isPopoverOpen: !prevState.isPopoverOpen,
-    }));
+  const closePopover = () => {
+    setIsPopoverOpen(false);
   };
 
-  public closePopover = () => {
-    this.setState({ isPopoverOpen: false });
-  };
+  function onFiltersUpdated(filters: Filter[]) {
+    if (props.onFiltersUpdated) {
+      props.onFiltersUpdated(filters);
+    }
+  }
 
-  public render() {
-    const panelTree = {
+  function onEnableAll() {
+    const filters = props.filters.map(enableFilter);
+    onFiltersUpdated(filters);
+  }
+
+  function onDisableAll() {
+    const filters = props.filters.map(disableFilter);
+    onFiltersUpdated(filters);
+  }
+
+  function onPinAll() {
+    const filters = props.filters.map(pinFilter);
+    onFiltersUpdated(filters);
+  }
+
+  function onUnpinAll() {
+    const filters = props.filters.map(unpinFilter);
+    onFiltersUpdated(filters);
+  }
+
+  function onToggleAllNegated() {
+    const filters = props.filters.map(toggleFilterNegated);
+    onFiltersUpdated(filters);
+  }
+
+  function onToggleAllDisabled() {
+    const filters = props.filters.map(toggleFilterDisabled);
+    onFiltersUpdated(filters);
+  }
+
+  function onRemoveAll() {
+    onFiltersUpdated([]);
+  }
+
+  function onAdd(filter: Filter) {
+    setIsPopoverOpen(false);
+    const filters = [...props.filters, filter];
+    onFiltersUpdated(filters);
+  }
+
+  function onResize(dimensions: { height: number; width: number }) {
+    setFilterWidth(dimensions.width);
+  }
+
+  const panelTree = [
+    {
       id: 0,
+      title: 'Filters',
       items: [
         {
-          name: this.props.intl.formatMessage({
+          name: props.intl.formatMessage({
+            id: 'data.filter.options.addFiltersButtonLabel',
+            defaultMessage: 'Add filters',
+          }),
+          icon: 'plusInCircle',
+          onClick: () => {
+            setRenderedComponent('addFilter');
+            setShowSaveQueryButton(false);
+          },
+
+          // panel: 1,
+          'data-test-subj': 'addFilters',
+        },
+        {
+          name: props.intl.formatMessage({
             id: 'data.filter.options.enableAllFiltersButtonLabel',
             defaultMessage: 'Enable all',
           }),
           icon: 'eye',
           onClick: () => {
-            this.closePopover();
-            this.props.onEnableAll();
+            closePopover();
+            onEnableAll();
           },
           'data-test-subj': 'enableAllFilters',
         },
         {
-          name: this.props.intl.formatMessage({
+          name: props.intl.formatMessage({
             id: 'data.filter.options.disableAllFiltersButtonLabel',
             defaultMessage: 'Disable all',
           }),
           icon: 'eyeClosed',
           onClick: () => {
-            this.closePopover();
-            this.props.onDisableAll();
+            closePopover();
+            onDisableAll();
           },
           'data-test-subj': 'disableAllFilters',
         },
         {
-          name: this.props.intl.formatMessage({
+          name: props.intl.formatMessage({
             id: 'data.filter.options.pinAllFiltersButtonLabel',
             defaultMessage: 'Pin all',
           }),
           icon: 'pin',
           onClick: () => {
-            this.closePopover();
-            this.props.onPinAll();
+            closePopover();
+            onPinAll();
           },
           'data-test-subj': 'pinAllFilters',
         },
         {
-          name: this.props.intl.formatMessage({
+          name: props.intl.formatMessage({
             id: 'data.filter.options.unpinAllFiltersButtonLabel',
             defaultMessage: 'Unpin all',
           }),
           icon: 'pin',
           onClick: () => {
-            this.closePopover();
-            this.props.onUnpinAll();
+            closePopover();
+            onUnpinAll();
           },
           'data-test-subj': 'unpinAllFilters',
         },
         {
-          name: this.props.intl.formatMessage({
+          name: props.intl.formatMessage({
             id: 'data.filter.options.invertNegatedFiltersButtonLabel',
             defaultMessage: 'Invert inclusion',
           }),
           icon: 'invert',
           onClick: () => {
-            this.closePopover();
-            this.props.onToggleAllNegated();
+            closePopover();
+            onToggleAllNegated();
           },
           'data-test-subj': 'invertInclusionAllFilters',
         },
         {
-          name: this.props.intl.formatMessage({
+          name: props.intl.formatMessage({
             id: 'data.filter.options.invertDisabledFiltersButtonLabel',
             defaultMessage: 'Invert enabled/disabled',
           }),
           icon: 'eye',
           onClick: () => {
-            this.closePopover();
-            this.props.onToggleAllDisabled();
+            closePopover();
+            onToggleAllDisabled();
           },
           'data-test-subj': 'invertEnableDisableAllFilters',
         },
         {
-          name: this.props.intl.formatMessage({
+          name: props.intl.formatMessage({
             id: 'data.filter.options.deleteAllFiltersButtonLabel',
             defaultMessage: 'Remove all',
           }),
           icon: 'trash',
           onClick: () => {
-            this.closePopover();
-            this.props.onRemoveAll();
+            closePopover();
+            onRemoveAll();
           },
           'data-test-subj': 'removeAllFilters',
         },
       ],
-    };
+    },
+  ];
 
-    return (
-      <EuiPopover
-        id="popoverForAllFilters"
-        className="globalFilterGroup__allFiltersPopover"
-        isOpen={this.state.isPopoverOpen}
-        closePopover={this.closePopover}
-        button={
-          <EuiToolTip
-            content={this.props.intl.formatMessage({
+  const renderComponent = () => {
+    switch (renderedComponent) {
+      case 'menu':
+        return <EuiContextMenu initialPanelId={0} panels={panelTree} size="s" />;
+      case 'addFilter':
+        return (
+          <EuiContextMenuPanel
+            items={[
+              <EuiResizeObserver onResize={onResize}>
+                {(resizeRef) => (
+                  <div style={{ width: maxFilterWidth, maxWidth: '100%' }} ref={resizeRef}>
+                    <EuiFlexItem style={{ width: filterWidth }} grow={false}>
+                      <FilterEditor
+                        filter={newFilter}
+                        indexPatterns={props.indexPatterns}
+                        onSubmit={onAdd}
+                        onCancel={() => setIsPopoverOpen(false)}
+                        key={stringify(newFilter)}
+                      />
+                    </EuiFlexItem>
+                  </div>
+                )}
+              </EuiResizeObserver>,
+            ]}
+          />
+        );
+      case 'saveQuery':
+        return props.savedQueryManagement;
+    }
+  };
+
+  return (
+    <EuiPopover
+      id="popoverForAllFilters"
+      className="globalFilterGroup__allFiltersPopover"
+      isOpen={isPopoverOpen}
+      closePopover={closePopover}
+      button={
+        <EuiToolTip
+          content={props.intl.formatMessage({
+            id: 'data.filter.options.changeAllFiltersButtonLabel',
+            defaultMessage: 'Change all filters',
+          })}
+          delay="long"
+          position="bottom"
+        >
+          <EuiSmallButtonEmpty
+            onClick={togglePopover}
+            aria-label={props.intl.formatMessage({
               id: 'data.filter.options.changeAllFiltersButtonLabel',
               defaultMessage: 'Change all filters',
             })}
-            delay="long"
-            position="bottom"
+            data-test-subj="showFilterActions"
           >
-            <EuiSmallButtonIcon
-              onClick={this.togglePopover}
-              iconType="filter"
-              aria-label={this.props.intl.formatMessage({
-                id: 'data.filter.options.changeAllFiltersButtonLabel',
-                defaultMessage: 'Change all filters',
-              })}
-              data-test-subj="showFilterActions"
-            />
-          </EuiToolTip>
-        }
-        anchorPosition="rightUp"
-        panelPaddingSize="none"
-        repositionOnScroll
-      >
-        <EuiPopoverTitle paddingSize="s">
-          <FormattedMessage
-            id="data.filter.searchBar.changeAllFiltersTitle"
-            defaultMessage="Change all filters"
-          />
-        </EuiPopoverTitle>
-        <EuiContextMenu initialPanelId={0} panels={[panelTree]} size="s" />
-      </EuiPopover>
-    );
-  }
-}
+            <EuiIcon type="filter" className="euiQuickSelectPopover__buttonText" />
+            <EuiIcon type="arrowDown" />
+          </EuiSmallButtonEmpty>
+        </EuiToolTip>
+      }
+      anchorPosition="rightUp"
+      panelPaddingSize="none"
+      repositionOnScroll
+    >
+      {renderComponent()}
+      {showSaveQueryButton && (
+        <EuiPopoverFooter>
+          <EuiFlexGroup justifyContent="spaceAround">
+            <EuiFlexItem>
+              <EuiButton
+                size="s"
+                fill={false}
+                aria-label={i18n.translate(
+                  'data.search.searchBar.savedQueryPopoverSaveButtonAriaLabel',
+                  {
+                    defaultMessage: 'Save a new saved query',
+                  }
+                )}
+                data-test-subj="saved-query-management-save-button"
+                onClick={() => {
+                  setRenderedComponent('saveQuery');
+                  setShowSaveQueryButton(false);
+                }}
+              >
+                {i18n.translate('data.search.searchBar.savedQueryPopoverSaveButtonText', {
+                  defaultMessage: 'Save query',
+                })}
+              </EuiButton>
+            </EuiFlexItem>
+          </EuiFlexGroup>
+        </EuiPopoverFooter>
+      )}
+    </EuiPopover>
+  );
+};
 
 export const FilterOptions = injectI18n(FilterOptionsUI);

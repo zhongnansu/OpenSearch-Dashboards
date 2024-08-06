@@ -35,6 +35,7 @@ import {
   EuiFlexItem,
   EuiPopover,
   EuiResizeObserver,
+  EuiText,
 } from '@elastic/eui';
 import { FormattedMessage, InjectedIntl, injectI18n } from '@osd/i18n/react';
 import classNames from 'classnames';
@@ -177,40 +178,6 @@ function FilterBarUI(props: Props) {
     onFiltersUpdated(filters);
   }
 
-  function onEnableAll() {
-    const filters = props.filters.map(enableFilter);
-    onFiltersUpdated(filters);
-  }
-
-  function onDisableAll() {
-    const filters = props.filters.map(disableFilter);
-    onFiltersUpdated(filters);
-  }
-
-  function onPinAll() {
-    const filters = props.filters.map(pinFilter);
-    onFiltersUpdated(filters);
-  }
-
-  function onUnpinAll() {
-    const filters = props.filters.map(unpinFilter);
-    onFiltersUpdated(filters);
-  }
-
-  function onToggleAllNegated() {
-    const filters = props.filters.map(toggleFilterNegated);
-    onFiltersUpdated(filters);
-  }
-
-  function onToggleAllDisabled() {
-    const filters = props.filters.map(toggleFilterDisabled);
-    onFiltersUpdated(filters);
-  }
-
-  function onRemoveAll() {
-    onFiltersUpdated([]);
-  }
-
   const classes = classNames('globalFilterBar', props.className);
 
   return (
@@ -221,15 +188,7 @@ function FilterBarUI(props: Props) {
       responsive={false}
     >
       <EuiFlexItem className="globalFilterGroup__branch" grow={false}>
-        <FilterOptions
-          onEnableAll={onEnableAll}
-          onDisableAll={onDisableAll}
-          onPinAll={onPinAll}
-          onUnpinAll={onUnpinAll}
-          onToggleAllNegated={onToggleAllNegated}
-          onToggleAllDisabled={onToggleAllDisabled}
-          onRemoveAll={onRemoveAll}
-        />
+        {/*// TODO: add the Filters text with correct styling*/}
       </EuiFlexItem>
 
       <EuiFlexItem className="globalFilterGroup__filterFlexItem">
