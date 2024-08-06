@@ -20,11 +20,11 @@ type MockedUnmount = jest.MockedFunction<UnmountCallback>;
 
 describe('HeaderControlsContainer', () => {
   let component: ReactWrapper;
-  let menuMount$: BehaviorSubject<MountPoint | undefined>;
+  let controlMount$: BehaviorSubject<MountPoint | undefined>;
   let unmounts: Record<string, MockedUnmount>;
 
   beforeEach(() => {
-    menuMount$ = new BehaviorSubject<MountPoint | undefined>(undefined);
+    controlMount$ = new BehaviorSubject<MountPoint | undefined>(undefined);
     unmounts = {};
   });
 
@@ -52,10 +52,10 @@ describe('HeaderControlsContainer', () => {
   };
 
   it('mounts the current value of the provided observable', async () => {
-    component = mount(<HeaderControlsContainer controls$={menuMount$} />);
+    component = mount(<HeaderControlsContainer controls$={controlMount$} />);
 
     act(() => {
-      menuMount$.next(createMountPoint('FOO'));
+      controlMount$.next(createMountPoint('FOO'));
     });
     await refresh();
 
@@ -65,10 +65,10 @@ describe('HeaderControlsContainer', () => {
   });
 
   it('clears the content of the component when emitting undefined', async () => {
-    component = mount(<HeaderControlsContainer controls$={menuMount$} />);
+    component = mount(<HeaderControlsContainer controls$={controlMount$} />);
 
     act(() => {
-      menuMount$.next(createMountPoint('FOO'));
+      controlMount$.next(createMountPoint('FOO'));
     });
     await refresh();
 
@@ -77,7 +77,7 @@ describe('HeaderControlsContainer', () => {
     );
 
     act(() => {
-      menuMount$.next(undefined);
+      controlMount$.next(undefined);
     });
     await refresh();
 
@@ -87,10 +87,10 @@ describe('HeaderControlsContainer', () => {
   });
 
   it('updates the dom when a new mount point is emitted', async () => {
-    component = mount(<HeaderControlsContainer controls$={menuMount$} />);
+    component = mount(<HeaderControlsContainer controls$={controlMount$} />);
 
     act(() => {
-      menuMount$.next(createMountPoint('FOO'));
+      controlMount$.next(createMountPoint('FOO'));
     });
     await refresh();
 
@@ -99,7 +99,7 @@ describe('HeaderControlsContainer', () => {
     );
 
     act(() => {
-      menuMount$.next(createMountPoint('BAR'));
+      controlMount$.next(createMountPoint('BAR'));
     });
     await refresh();
 
@@ -109,10 +109,10 @@ describe('HeaderControlsContainer', () => {
   });
 
   it('calls the previous mount point `unmount` when mounting a new mount point', async () => {
-    component = mount(<HeaderControlsContainer controls$={menuMount$} />);
+    component = mount(<HeaderControlsContainer controls$={controlMount$} />);
 
     act(() => {
-      menuMount$.next(createMountPoint('FOO'));
+      controlMount$.next(createMountPoint('FOO'));
     });
     await refresh();
 
@@ -120,7 +120,7 @@ describe('HeaderControlsContainer', () => {
     expect(unmounts.FOO).not.toHaveBeenCalled();
 
     act(() => {
-      menuMount$.next(createMountPoint('BAR'));
+      controlMount$.next(createMountPoint('BAR'));
     });
     await refresh();
 
