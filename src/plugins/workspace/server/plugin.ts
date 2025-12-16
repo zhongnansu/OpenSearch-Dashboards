@@ -13,7 +13,18 @@ import {
   Logger,
   CoreStart,
   SharedGlobalConfig,
-} from '../../../core/server';
+} from 'opensearch-dashboards/server';
+import {
+  cleanWorkspaceId,
+  cleanUpACLAuditor,
+  cleanUpClientCallAuditor,
+  getACLAuditor,
+  getWorkspaceIdFromUrl,
+  getWorkspaceState,
+  initializeACLAuditor,
+  initializeClientCallAuditor,
+  updateWorkspaceState,
+} from 'opensearch-dashboards/server/utils';
 import {
   WORKSPACE_SAVED_OBJECTS_CLIENT_WRAPPER_ID,
   WORKSPACE_CONFLICT_CONTROL_SAVED_OBJECTS_CLIENT_WRAPPER_ID,
@@ -33,17 +44,6 @@ import { IWorkspaceClientImpl, WorkspacePluginSetup, WorkspacePluginStart } from
 import { WorkspaceClient } from './workspace_client';
 import { registerRoutes } from './routes';
 import { WorkspaceSavedObjectsClientWrapper } from './saved_objects';
-import {
-  cleanWorkspaceId,
-  cleanUpACLAuditor,
-  cleanUpClientCallAuditor,
-  getACLAuditor,
-  getWorkspaceIdFromUrl,
-  getWorkspaceState,
-  initializeACLAuditor,
-  initializeClientCallAuditor,
-  updateWorkspaceState,
-} from '../../../core/server/utils';
 import { WorkspaceConflictSavedObjectsClientWrapper } from './saved_objects/saved_objects_wrapper_for_check_workspace_conflict';
 import {
   SavedObjectsPermissionControl,
@@ -70,6 +70,7 @@ export class WorkspacePlugin implements Plugin<WorkspacePluginSetup, WorkspacePl
   private workspaceSavedObjectsClientWrapper?: WorkspaceSavedObjectsClientWrapper;
   private workspaceUiSettingsClientWrapper?: WorkspaceUiSettingsClientWrapper;
   private workspaceConfig$: Observable<ConfigSchema>;
+  private env: PluginInitializerContext['env'];
 
   private proxyWorkspaceTrafficToRealHandler(setupDeps: CoreSetup) {
     /**
@@ -218,6 +219,7 @@ export class WorkspacePlugin implements Plugin<WorkspacePluginSetup, WorkspacePl
     this.logger = initializerContext.logger.get();
     this.globalConfig$ = initializerContext.config.legacy.globalConfig$;
     this.workspaceConfig$ = initializerContext.config.create();
+    this.env = initializerContext.env;
   }
 
   public async setup(core: CoreSetup, deps: WorkspacePluginDependencies) {
@@ -245,7 +247,10 @@ export class WorkspacePlugin implements Plugin<WorkspacePluginSetup, WorkspacePl
     );
     this.proxyWorkspaceTrafficToRealHandler(core);
 
-    const workspaceUiSettingsClientWrapper = new WorkspaceUiSettingsClientWrapper(this.logger);
+    const workspaceUiSettingsClientWrapper = new WorkspaceUiSettingsClientWrapper(
+      this.logger,
+      this.env
+    );
     this.workspaceUiSettingsClientWrapper = workspaceUiSettingsClientWrapper;
     core.savedObjects.addClientWrapper(
       PRIORITY_FOR_WORKSPACE_UI_SETTINGS_WRAPPER,
@@ -256,7 +261,7 @@ export class WorkspacePlugin implements Plugin<WorkspacePluginSetup, WorkspacePl
     core.savedObjects.addClientWrapper(
       PRIORITY_FOR_WORKSPACE_ID_CONSUMER_WRAPPER,
       WORKSPACE_ID_CONSUMER_WRAPPER_ID,
-      new WorkspaceIdConsumerWrapper(this.client).wrapperFactory
+      new WorkspaceIdConsumerWrapper(this.client, this.logger).wrapperFactory
     );
 
     const maxImportExportSize = core.savedObjects.getImportExportObjectLimit();
@@ -303,6 +308,9 @@ export class WorkspacePlugin implements Plugin<WorkspacePluginSetup, WorkspacePl
     this.workspaceConflictControl?.setSerializer(core.savedObjects.createSerializer());
     this.workspaceSavedObjectsClientWrapper?.setScopedClient(core.savedObjects.getScopedClient);
     this.workspaceUiSettingsClientWrapper?.setScopedClient(core.savedObjects.getScopedClient);
+    this.workspaceUiSettingsClientWrapper?.setAsScopedUISettingsClient(
+      core.uiSettings.asScopedToClient
+    );
 
     return {
       client: this.client as IWorkspaceClientImpl,

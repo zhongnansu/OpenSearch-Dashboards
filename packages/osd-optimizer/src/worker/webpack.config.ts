@@ -266,6 +266,27 @@ export function getWebpackConfig(bundle: Bundle, bundleRefs: BundleRefs, worker:
             },
           },
         },
+        {
+          test: /\.m?js$/,
+          include: [
+            /node_modules[\\/]@dagrejs/,
+            /node_modules[\\/]@xyflow/,
+            /node_modules[\\/]fast-png/,
+            /node_modules[\\/]iobuffer/,
+          ],
+          use: {
+            loader: 'babel-loader',
+            options: {
+              presets: [BABEL_PRESET_PATH],
+              plugins: [
+                '@babel/plugin-transform-class-properties',
+                '@babel/plugin-transform-class-static-block',
+                '@babel/plugin-transform-private-methods',
+                '@babel/plugin-transform-private-property-in-object',
+              ],
+            },
+          },
+        },
       ],
     },
 
@@ -274,6 +295,7 @@ export function getWebpackConfig(bundle: Bundle, bundleRefs: BundleRefs, worker:
       mainFields: ['browser', 'main'],
       alias: {
         core_app_image_assets: Path.resolve(worker.repoRoot, 'src/core/public/core_app/images'),
+        'opensearch-dashboards/public': Path.resolve(worker.repoRoot, 'src/core/public'),
       },
     },
 

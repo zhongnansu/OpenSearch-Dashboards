@@ -88,6 +88,7 @@ export async function mountManagementSection(
         </Route>
         {canManageDataSource && (
           <Route path={['/create']}>
+            {/* @ts-expect-error TS2739 TODO(ts-error): fixme */}
             <CreateDataSourcePanel
               {...params}
               featureFlagStatus={featureFlagStatus}
@@ -105,6 +106,7 @@ export async function mountManagementSection(
             <ConfigureDirectQueryDataSourceWithRouter
               notifications={notifications}
               useNewUX={useNewUX}
+              featureFlagStatus={featureFlagStatus}
             />
           </Route>
         )}
@@ -114,6 +116,7 @@ export async function mountManagementSection(
           </Route>
         )}
         <Route path={['/']}>
+          {/* @ts-expect-error TS2739 TODO(ts-error): fixme */}
           <DataSourceHomePanel
             history={params.history}
             featureFlagStatus={featureFlagStatus}

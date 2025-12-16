@@ -182,15 +182,24 @@ export const DatasetExplorer = ({
                 >
                   <h3>{current.columnHeader}</h3>
                 </EuiTitle>
-                {current.multiSelect ? (
+                {current.DataStructureCreator ? (
+                  <current.DataStructureCreator
+                    path={path}
+                    setPath={setPath}
+                    index={index}
+                    selectDataStructure={selectDataStructure}
+                    services={services}
+                    // @ts-ignore custom component can have their own fetch options
+                    fetchDataStructure={fetchNextDataStructure}
+                  />
+                ) : current.multiSelect ? (
                   <DatasetTable
                     services={services}
                     path={path}
                     setPath={setPath}
                     index={index}
-                    explorerDataset={explorerDataset}
                     selectDataStructure={selectDataStructure}
-                    fetchNextDataStructure={fetchNextDataStructure}
+                    fetchDataStructure={fetchNextDataStructure}
                   />
                 ) : (
                   <EuiSelectable
@@ -237,11 +246,10 @@ export const DatasetExplorer = ({
         </div>
       </EuiModalBody>
       <EuiModalFooter>
-        <EuiButtonEmpty onClick={onCancel}>
+        <EuiButtonEmpty data-test-subj="datasetSelectorCancel" onClick={onCancel}>
           <FormattedMessage
             id="data.explorer.datasetSelector.advancedSelector.cancel"
             defaultMessage="Cancel"
-            data-test-subj="datasetSelectorCancel"
           />
         </EuiButtonEmpty>
         <EuiButton

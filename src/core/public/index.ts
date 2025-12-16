@@ -102,6 +102,8 @@ import {
 } from './context';
 import { Branding } from '../types';
 import { WorkspacesStart, WorkspacesSetup } from './workspace';
+import { KeyboardShortcutSetup, KeyboardShortcutStart } from './keyboard_shortcut';
+import { ChatServiceSetup, ChatServiceStart } from './chat';
 
 export type { Logos } from '../common';
 export { PackageInfo, EnvironmentMode } from '../server/types';
@@ -110,13 +112,18 @@ export { CoreContext, CoreSystem } from './core_system';
 export {
   DEFAULT_APP_CATEGORIES,
   WORKSPACE_TYPE,
+  WORKSPACE_USE_CASE_PREFIX,
   cleanWorkspaceId,
+  isNavGroupInFeatureConfigs,
+  getUseCaseFeatureConfig,
   DEFAULT_NAV_GROUPS,
   ALL_USE_CASE_ID,
   SEARCH_USE_CASE_ID,
   ESSENTIAL_USE_CASE_ID,
   OBSERVABILITY_USE_CASE_ID,
   SECURITY_ANALYTICS_USE_CASE_ID,
+  ENABLE_AI_FEATURES,
+  UseCaseId,
 } from '../utils';
 export {
   AppCategory,
@@ -284,6 +291,10 @@ export interface CoreSetup<TPluginsStart extends object = object, TStart = unkno
   getStartServices: StartServicesAccessor<TPluginsStart, TStart>;
   /** {@link WorkspacesSetup} */
   workspaces: WorkspacesSetup;
+  /** {@link KeyboardShortcutsSetup} */
+  keyboardShortcut: KeyboardShortcutSetup;
+  /** {@link ChatServiceSetup} */
+  chat: ChatServiceSetup;
 }
 
 /**
@@ -340,6 +351,10 @@ export interface CoreStart {
   };
   /** {@link WorkspacesStart} */
   workspaces: WorkspacesStart;
+  /** {@link KeyboardShortcutStart} */
+  keyboardShortcut?: KeyboardShortcutStart;
+  /** {@link ChatServiceStart} */
+  chat: ChatServiceStart;
 }
 
 export {
@@ -411,6 +426,22 @@ export {
   IWorkspaceClient,
   IWorkspaceResponse,
 } from './workspace';
+
+export {
+  KeyboardShortcutSetup,
+  KeyboardShortcutStart,
+  ShortcutDefinition,
+  KeyboardShortcutHelpModal,
+} from './keyboard_shortcut';
+
+export {
+  ChatServiceInterface,
+  ChatServiceSetup,
+  ChatServiceStart,
+  ChatImplementationFunctions,
+  Message,
+  ChatWindowState,
+} from './chat';
 
 export { debounce } from './utils';
 

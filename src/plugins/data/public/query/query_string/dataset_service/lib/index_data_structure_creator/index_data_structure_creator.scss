@@ -1,0 +1,21 @@
+/*
+ * Copyright OpenSearch Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+@import "@elastic/eui/src/global_styling/variables/size";
+
+.indexDataStructureCreator {
+  padding: $euiSize;
+
+  &__selectedIndices {
+    display: flex;
+    flex-direction: column;
+    gap: $euiSizeXS;
+    margin-top: $euiSizeS;
+  }
+
+  &__badgeContainer {
+    display: flex;
+  }
+}
