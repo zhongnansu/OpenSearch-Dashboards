@@ -13,6 +13,7 @@ import type {
   ToolCallArgsEvent,
   ToolCallEndEvent,
   ToolCallResultEvent,
+  MessagesSnapshotEvent,
 } from '../../common/events';
 import type {
   Message,
@@ -24,15 +25,7 @@ import type {
 import { AssistantActionService } from '../../../context_provider/public';
 import { ToolExecutor } from './tool_executor';
 import { ChatService } from './chat_service';
-
-// Timeline is now purely AG-UI Messages
-
-interface PendingToolCall {
-  id: string;
-  name: string;
-  args: string;
-  messageId?: string;
-}
+import { ConfirmationService } from './confirmation_service';
 
 /**
  * Handles all chat event processing logic
@@ -47,12 +40,13 @@ export class ChatEventHandler {
 
   constructor(
     private assistantActionService: AssistantActionService,
-    private chatService: ChatService | null,
+    private chatService: ChatService,
     private onTimelineUpdate: (updater: (prev: Message[]) => Message[]) => void,
     private onStreamingStateChange: (isStreaming: boolean) => void,
-    private getTimeline: () => Message[]
+    private getTimeline: () => Message[],
+    confirmationService: ConfirmationService
   ) {
-    this.toolExecutor = new ToolExecutor(assistantActionService);
+    this.toolExecutor = new ToolExecutor(assistantActionService, confirmationService);
   }
 
   /**
@@ -94,6 +88,10 @@ export class ChatEventHandler {
 
       case EventType.TOOL_CALL_RESULT:
         this.handleToolCallResult(event as ToolCallResultEvent);
+        break;
+
+      case EventType.MESSAGES_SNAPSHOT:
+        await this.handleMessagesSnapshot(event as MessagesSnapshotEvent);
         break;
 
       case EventType.RUN_ERROR:
@@ -210,6 +208,17 @@ export class ChatEventHandler {
 
   /**
    * Handle start of a tool call
+   *
+   * This method determines the correct position in the timeline to place tool calls:
+   * 1. If parentMessageId is provided, attach to that specific message
+   * 2. Otherwise, use a selection strategy to determine placement:
+   *    - If the last assistant text message appears after the last user message,
+   *      attach the tool call to that assistant message
+   *    - If not (e.g., user sent a new message after assistant's response),
+   *      create a new fake assistant message to hold the tool calls
+   *
+   * This ensures tool calls are always associated with the correct assistant response
+   * in the conversation timeline, maintaining proper message ordering.
    */
   private handleToolCallStart(event: ToolCallStartEvent): void {
     const { toolCallId, toolCallName, parentMessageId } = event;
@@ -235,12 +244,46 @@ export class ChatEventHandler {
     // Add to pending map for args accumulation
     this.pendingToolCalls.set(toolCallId, toolCall);
 
-    // Use the last TEXT_MESSAGE_START message ID for association
-    const targetMessageId = parentMessageId || this.lastTextMessageStartId;
-
-    if (targetMessageId) {
-      this.addToolCallToMessage(targetMessageId, toolCall);
+    // Strategy 1: Use explicitly provided parent message ID
+    // This is the most reliable approach when the backend provides it
+    if (parentMessageId) {
+      this.addToolCallToMessage(parentMessageId, toolCall);
+      return;
     }
+
+    // Strategy 2: Determine placement based on message timeline positions
+    // Check if the last assistant message is still the most recent response
+    const timelineMessages = this.getTimeline();
+    if (this.lastTextMessageStartId) {
+      const lastAssistantTextMessageIndex = timelineMessages.findLastIndex(
+        (message) => message.id === this.lastTextMessageStartId
+      );
+      const lastUserMessageIndex = timelineMessages.findLastIndex(
+        (message) => message.role === 'user'
+      );
+
+      // If the last assistant message appears after the last user message,
+      // it means this tool call belongs to the current conversation turn
+      if (lastAssistantTextMessageIndex > lastUserMessageIndex) {
+        this.addToolCallToMessage(this.lastTextMessageStartId, toolCall);
+        return;
+      }
+    }
+
+    // Strategy 3: Create a new assistant message placeholder
+    // This handles the case where the LLM responds with tool calls but without any text message.
+    // Since there's no TEXT_MESSAGE_START event, we need to create a fake assistant message
+    // to hold the tool calls so they appear in the correct position in the timeline.
+    const fakeAssistantMessageId = `fake-assistant-message-` + new Date().getTime();
+    this.onTimelineUpdate((prev) => {
+      const newMessage: AssistantMessage = {
+        id: fakeAssistantMessageId,
+        role: 'assistant',
+        toolCalls: [toolCall],
+      };
+      return [...prev, newMessage];
+    });
+    this.lastTextMessageStartId = fakeAssistantMessageId;
   }
 
   /**
@@ -283,8 +326,35 @@ export class ChatEventHandler {
         args,
       });
 
-      // Execute the tool
-      const result = await this.toolExecutor.executeTool(toolCall.function.name, args);
+      // Execute the tool and update tool execution status
+      const result = await this.toolExecutor.executeTool(
+        toolCall.function.name,
+        args,
+        toolCallId,
+        await this.chatService?.getCurrentDataSourceId()
+      );
+
+      // Check if tool execution was cancelled (e.g., due to cleanup)
+      if (result.cancelled) {
+        this.pendingToolCalls.delete(toolCallId);
+        return;
+      }
+
+      if (result.userRejected) {
+        // User rejected the tool execution
+        this.assistantActionService.updateToolCallState(toolCallId, {
+          status: 'failed',
+        });
+
+        // Send rejection message back to assistant
+        if (this.chatService && (this.chatService as any).sendToolResult) {
+          await this.sendToolResultToAssistant(toolCallId, result);
+        }
+
+        // Clean up pending tool call
+        this.pendingToolCalls.delete(toolCallId);
+        return;
+      }
 
       if (result.waitingForAgentResponse) {
         // Agent will handle this tool and send results back via events
@@ -488,7 +558,7 @@ export class ChatEventHandler {
     try {
       const messages = this.getTimeline();
 
-      const { observable, toolMessage } = await (this.chatService as any).sendToolResult(
+      const { observable, toolMessage } = await this.chatService.sendToolResult(
         toolCallId,
         result,
         messages
@@ -521,6 +591,18 @@ export class ChatEventHandler {
   }
 
   // timelineToMessages method removed - timeline is now directly AG-UI compatible
+
+  /**
+   * Handle messages snapshot - restore conversation state from saved messages
+   * Simply sets the timeline to the saved messages
+   */
+  private async handleMessagesSnapshot(event: MessagesSnapshotEvent): Promise<void> {
+    // Set timeline to snapshot messages
+    this.onTimelineUpdate(() => event.messages || []);
+
+    // Reset streaming state
+    this.onStreamingStateChange(false);
+  }
 
   /**
    * Clear all state (useful for resetting)

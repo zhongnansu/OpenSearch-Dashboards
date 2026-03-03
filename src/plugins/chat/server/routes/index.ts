@@ -13,6 +13,8 @@ import {
 } from '../../../../core/server';
 import { MLAgentRouterFactory } from './ml_routes/ml_agent_router';
 import { MLAgentRouterRegistry } from './ml_routes/router_registry';
+import { injectSystemPrompt } from '../prompts';
+import { getMemoryContainerId } from './utils/get_memory_container_id';
 
 /**
  * Forward request to external AG-UI server
@@ -85,8 +87,102 @@ export function defineRoutes(
   getCapabilitiesResolver?: () =>
     | ((request: OpenSearchDashboardsRequest) => Promise<Capabilities>)
     | undefined,
-  mlCommonsAgentId?: string
+  mlCommonsAgentId?: string,
+  observabilityAgentId?: string
 ) {
+  // Route for searching agent memory sessions (conversation history)
+  router.post(
+    {
+      path: '/api/chat/memory/sessions/search',
+      validate: {
+        body: schema.object({
+          query: schema.any(),
+          from: schema.maybe(schema.number()),
+          size: schema.maybe(schema.number()),
+          sort: schema.maybe(schema.any()),
+        }),
+        query: schema.maybe(
+          schema.object({
+            dataSourceId: schema.maybe(schema.string()),
+          })
+        ),
+      },
+    },
+    async (context, request, response) => {
+      const { query, from, size, sort } = request.body;
+      const dataSourceId = request.query?.dataSourceId;
+
+      try {
+        // Get agentId from config (mlCommonsAgentId from opensearch_dashboards.yml)
+        if (!mlCommonsAgentId) {
+          return response.customError({
+            statusCode: 503,
+            body: {
+              message: 'ML Commons agent ID not configured',
+            },
+          });
+        }
+
+        // Check if ML Commons agentic features are enabled via capabilities
+        const capabilitiesResolver = getCapabilitiesResolver?.();
+        const capabilities = capabilitiesResolver ? await capabilitiesResolver(request) : undefined;
+
+        // Initialize ML agent routers based on current capabilities or configured agent IDs
+        // This ensures routers are registered based on actual runtime capabilities
+        MLAgentRouterRegistry.initialize(capabilities, observabilityAgentId);
+
+        // Get the registered ML agent router to use its proxy method
+        const mlRouter = MLAgentRouterFactory.getRouter();
+        if (!mlRouter) {
+          return response.customError({
+            statusCode: 503,
+            body: {
+              message: 'ML router not available',
+            },
+          });
+        }
+
+        const memoryContainerId = await getMemoryContainerId(
+          mlRouter,
+          context,
+          request,
+          mlCommonsAgentId,
+          dataSourceId,
+          logger
+        );
+
+        // Search memory sessions using router's proxy method
+        const searchResponse = await mlRouter.proxyRequest({
+          context,
+          request,
+          method: 'POST',
+          path: `/_plugins/_ml/memory_containers/${memoryContainerId}/memories/sessions/_search`,
+          body: {
+            query,
+            ...(from !== undefined && { from }),
+            ...(size !== undefined && { size }),
+            ...(sort && { sort }),
+          },
+          dataSourceId,
+        });
+
+        return response.ok({
+          body: searchResponse,
+        });
+      } catch (error) {
+        logger.error(`Failed to search memory sessions: ${error}`);
+        const statusCode = typeof error?.statusCode === 'number' ? error.statusCode : 500;
+
+        return response.customError({
+          statusCode,
+          body: {
+            message: error instanceof Error ? error.message : 'Failed to search memory sessions',
+          },
+        });
+      }
+    }
+  );
+
   // Proxy route for AG-UI requests
   router.post(
     {
@@ -112,13 +208,16 @@ export function defineRoutes(
       const dataSourceId = request.query?.dataSourceId;
 
       try {
+        // Inject server-side system prompt if present
+        injectSystemPrompt(request.body.messages, request.body.forwardedProps?.queryAssistLanguage);
+
         // Check if ML Commons agentic features are enabled via capabilities
         const capabilitiesResolver = getCapabilitiesResolver?.();
         const capabilities = capabilitiesResolver ? await capabilitiesResolver(request) : undefined;
 
-        // Initialize ML agent routers based on current capabilities (if not already done)
+        // Initialize ML agent routers based on current capabilities or configured agent IDs
         // This ensures routers are registered based on actual runtime capabilities
-        MLAgentRouterRegistry.initialize(capabilities);
+        MLAgentRouterRegistry.initialize(capabilities, observabilityAgentId);
 
         // Get the registered ML agent router (if any)
         const mlRouter = MLAgentRouterFactory.getRouter();
@@ -131,7 +230,8 @@ export function defineRoutes(
             response,
             logger,
             mlCommonsAgentId,
-            dataSourceId
+            dataSourceId,
+            observabilityAgentId
           );
         }
 

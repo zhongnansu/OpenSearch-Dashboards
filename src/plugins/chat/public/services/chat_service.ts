@@ -16,8 +16,11 @@ import {
   ChatServiceStart,
   ChatWindowState,
   WorkspacesStart,
+  Event,
+  EventType,
 } from '../../../../core/public';
 import { getDefaultDataSourceId } from '../../../data_source_management/public';
+import { ConversationHistoryService } from './conversation_history_service';
 
 export interface ChatState {
   messages: Message[];
@@ -49,11 +52,21 @@ export class ChatService {
   private readonly STORAGE_KEY = 'chat.currentState';
   private currentMessages: Message[] = [];
 
-  // ChatWindow ref for delegating sendMessage calls to proper timeline management
-  private chatWindowRef: React.RefObject<ChatWindowInstance> | null = null;
+  // ChatWindow instance for delegating sendMessage calls to proper timeline management
+  private chatWindowInstance: ChatWindowInstance | null = null;
+
+  // Promise to track when window instance becomes available
+  private windowInstancePromise: Promise<ChatWindowInstance> | null = null;
+  private windowInstanceResolver: ((instance: ChatWindowInstance) => void) | null = null;
 
   // Subscription to assistant action service for tool updates
   private toolSubscription?: Subscription;
+
+  // Cache for datasourceId to avoid repeated lookups
+  private cachedDataSourceId?: string;
+
+  // Conversation history service
+  public conversationHistoryService: ConversationHistoryService;
 
   constructor(
     uiSettings: IUiSettingsClient,
@@ -65,6 +78,12 @@ export class ChatService {
     this.uiSettings = uiSettings;
     this.coreChatService = coreChatService;
     this.workspaces = workspaces;
+
+    // Initialize conversation history service
+    if (!coreChatService) {
+      throw new Error('Core chat service is required for conversation history');
+    }
+    this.conversationHistoryService = new ConversationHistoryService(coreChatService);
 
     // Try to restore existing state first
     const currentChatState = this.loadCurrentChatState();
@@ -102,7 +121,7 @@ export class ChatService {
     return `run-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
-  private generateMessageId(): string {
+  public generateMessageId(): string {
     return `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
@@ -203,20 +222,51 @@ export class ChatService {
     return this.coreChatService.onWindowClose(callback);
   }
 
-  // ChatWindow ref management for proper timeline handling
-  public setChatWindowRef(ref: React.RefObject<ChatWindowInstance>): void {
-    this.chatWindowRef = ref;
+  // ChatWindow instance management for proper timeline handling
+  public setChatWindowInstance(instance: ChatWindowInstance): void {
+    this.chatWindowInstance = instance;
+
+    // Resolve the promise if someone is waiting for the instance
+    if (this.windowInstanceResolver) {
+      this.windowInstanceResolver(instance);
+      this.windowInstanceResolver = null;
+      this.windowInstancePromise = null;
+    }
   }
 
-  public clearChatWindowRef(): void {
-    this.chatWindowRef = null;
+  public clearChatWindowInstance(): void {
+    this.chatWindowInstance = null;
+    // Reset promise when instance is cleared
+    this.windowInstancePromise = null;
+    this.windowInstanceResolver = null;
   }
 
-  public async openWindow(): Promise<void> {
+  public async openWindow(): Promise<ChatWindowInstance> {
     if (!this.coreChatService) {
       throw new Error('Core chat service not available');
     }
+
+    // If window is already open and instance is available, return it immediately
+    if (this.isWindowOpen() && this.chatWindowInstance) {
+      return this.chatWindowInstance;
+    }
+
+    // Create a promise that will resolve when the window instance becomes available
+    const windowInstancePromise =
+      this.windowInstancePromise ||
+      new Promise<ChatWindowInstance>((resolve) => {
+        this.windowInstanceResolver = resolve;
+      });
+    if (!this.windowInstancePromise) {
+      this.windowInstancePromise = windowInstancePromise;
+    }
+
+    // Trigger window opening
     await this.coreChatService.openWindow();
+
+    // Wait for the window instance to be set (by setChatWindowInstance)
+    const instance = await windowInstancePromise;
+    return instance;
   }
 
   public async closeWindow(): Promise<void> {
@@ -234,45 +284,34 @@ export class ChatService {
     observable: any;
     userMessage: UserMessage;
   }> {
-    // Ensure window is open
-    await this.openWindow();
+    // Ensure window is open and get the window instance
+    const chatWindowInstance = await this.openWindow();
 
     // Clear conversation if requested (create new thread)
     if (options?.clearConversation) {
       this.newThread();
 
-      // If we have ChatWindow ref, also clear its conversation
-      if (this.chatWindowRef?.current) {
-        this.chatWindowRef.current.startNewChat();
+      // If we have ChatWindow instance, also clear its conversation
+      if (chatWindowInstance) {
+        chatWindowInstance.startNewChat();
       }
     }
 
-    // If ChatWindow is available, delegate to its sendMessage for proper timeline management
-    if (this.chatWindowRef?.current && this.isWindowOpen()) {
-      try {
-        await this.chatWindowRef.current.sendMessage({ content });
+    await chatWindowInstance.sendMessage({ content, messages });
 
-        // Create a user message for consistency with the return type
-        const userMessage: UserMessage = {
-          id: this.generateMessageId(),
-          role: 'user',
-          content: content.trim(),
-        };
+    // Create a user message for consistency with the return type
+    const userMessage: UserMessage = {
+      id: this.generateMessageId(),
+      role: 'user',
+      content: content.trim(),
+    };
 
-        // Return a dummy observable since ChatWindow handles everything internally
-        const dummyObservable = new Observable((subscriber) => {
-          subscriber.complete();
-        });
+    // Return a dummy observable since ChatWindow handles everything internally
+    const dummyObservable = new Observable((subscriber) => {
+      subscriber.complete();
+    });
 
-        return { observable: dummyObservable, userMessage };
-      } catch (error) {
-        // Fall back to direct service call if delegation fails
-      }
-    }
-
-    // Fallback to direct service call
-    const result = await this.sendMessage(content, messages);
-    return result;
+    return { observable: dummyObservable, userMessage };
   }
 
   /**
@@ -315,6 +354,7 @@ export class ChatService {
 
       const pageDataSourceId = this.extractDataSourceIdFromPageContext(allContexts);
       if (pageDataSourceId) {
+        this.cachedDataSourceId = pageDataSourceId;
         return pageDataSourceId;
       }
 
@@ -343,12 +383,21 @@ export class ChatService {
       // Get default data source with proper scope
       const dataSourceId = await getDefaultDataSourceId(this.uiSettings, scope);
 
+      this.cachedDataSourceId = dataSourceId || undefined;
       return dataSourceId || undefined;
     } catch (error) {
       // eslint-disable-next-line no-console
       console.warn('Failed to determine data source, proceeding without:', error);
       return undefined; // Graceful fallback - undefined means local cluster
     }
+  }
+
+  /**
+   * Get the current cached data source ID
+   * Returns the datasourceId that was last retrieved
+   */
+  public async getCurrentDataSourceId(): Promise<string | undefined> {
+    return this.cachedDataSourceId || (await this.getWorkspaceAwareDataSourceId());
   }
 
   public async sendMessage(
@@ -361,11 +410,31 @@ export class ChatService {
     const requestId = this.generateRequestId();
 
     this.addActiveRequest(requestId);
-    const userMessage: UserMessage = {
-      id: this.generateMessageId(),
-      role: 'user',
-      content: content.trim(),
-    };
+
+    // Check if the last message in the array is a user message with array content
+    // If so, append the text to the existing content array (for multimodal messages)
+    let userMessage: UserMessage;
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const hasArrayContent = lastMessage?.role === 'user' && Array.isArray(lastMessage.content);
+
+    if (hasArrayContent && lastMessage) {
+      // Remove the last message from the array since we'll merge it with the new message
+      messages = messages.slice(0, -1);
+
+      // Append text to the existing content array (preserves order from caller)
+      userMessage = {
+        ...lastMessage,
+        id: this.generateMessageId(),
+        content: [...(lastMessage.content as any[]), { type: 'text', text: content.trim() }],
+      };
+    } else {
+      // No array content, create a simple text message
+      userMessage = {
+        id: this.generateMessageId(),
+        role: 'user',
+        content: content.trim(),
+      };
+    }
 
     // Get workspace-aware data source ID
     const dataSourceId = await this.getWorkspaceAwareDataSourceId();
@@ -383,7 +452,9 @@ export class ChatService {
     const runInput: RunAgentInput = {
       threadId: this.getThreadId(),
       runId: this.generateRunId(),
-      messages: [...messages, userMessage],
+      messages: this.conversationHistoryService.getMemoryProvider().includeFullHistory
+        ? [...messages, userMessage]
+        : [userMessage],
       tools: this.availableTools || [], // Pass available tools to AG-UI server
       context, // All contexts (static + dynamic) with stringified values
       state: {}, // Empty for agent internal use only
@@ -563,6 +634,15 @@ export class ChatService {
   public updateCurrentMessages(messages: Message[]): void {
     this.currentMessages = messages;
     this.saveCurrentChatState();
+
+    // Save to conversation history (async but don't await to avoid blocking)
+    if (messages.length > 0) {
+      const threadId = this.getThreadId();
+      this.conversationHistoryService.saveConversation(threadId, messages).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to save conversation to history:', error);
+      });
+    }
   }
 
   private clearDynamicContextFromStore(): void {
@@ -597,6 +677,31 @@ export class ChatService {
 
     // Reset AgUiAgent connection state to clear any aborted controllers
     this.resetConnection();
+  }
+
+  /**
+   * Load a conversation from history
+   * Returns AG-UI event array for proper state restoration
+   */
+  public async loadConversation(threadId: string): Promise<Event[] | null> {
+    const events = await this.conversationHistoryService.getConversation(threadId);
+    if (!events) {
+      return null;
+    }
+
+    // Set the thread ID in core service
+    if (this.coreChatService) {
+      this.coreChatService.setThreadId(threadId);
+    }
+
+    // Extract messages from MESSAGES_SNAPSHOT event for current state management
+    const snapshotEvent = events.find((e) => e.type === EventType.MESSAGES_SNAPSHOT);
+    if (snapshotEvent && 'messages' in snapshotEvent) {
+      this.currentMessages = snapshotEvent.messages;
+      this.saveCurrentChatState();
+    }
+
+    return events;
   }
 
   /**
