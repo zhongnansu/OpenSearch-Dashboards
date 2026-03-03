@@ -20,4 +20,14 @@ describe('updateWorkspaceState', () => {
       isDataSourceAdmin: true,
     });
   });
+
+  it('returns an empty workspace state when request app state is missing', () => {
+    const requestMock = httpServerMock.createOpenSearchDashboardsRequest();
+
+    expect(getWorkspaceState(requestMock)).toEqual({
+      requestWorkspaceId: undefined,
+      isDashboardAdmin: undefined,
+      isDataSourceAdmin: undefined,
+    });
+  });
 });
