@@ -237,7 +237,7 @@ describe('start', () => {
                   `);
     });
 
-    it('emits false until manually overridden when in embed mode', async () => {
+    it('setIsVisible(true) has no effect in embed mode, chrome stays hidden', async () => {
       window.history.pushState(undefined, '', '#/home?a=b&embed=true');
       const startDeps = defaultStartDeps([new FakeApp('alpha')]);
       const { navigateToApp } = startDeps.application;
@@ -253,13 +253,12 @@ describe('start', () => {
       service.stop();
 
       await expect(promise).resolves.toMatchInlineSnapshot(`
-                      Array [
-                        false,
-                        false,
-                        true,
-                        false,
-                      ]
-                  `);
+              Array [
+                false,
+                false,
+                false,
+              ]
+            `);
     });
 
     it('application-specified visibility on mount', async () => {
@@ -571,33 +570,33 @@ describe('start', () => {
 
       expect(docTitleResetSpy).toBeCalledTimes(1);
       await expect(promises).resolves.toMatchInlineSnapshot(`
-        Array [
-          Array [
-            undefined,
-            Object {
-              "appName": "App name",
-            },
-            undefined,
-          ],
-          Array [
-            Array [],
-            Array [
-              Object {
-                "text": "App breadcrumb",
-              },
-            ],
-            Array [],
-          ],
-          Array [
-            undefined,
-            Object {
-              "text": "App badge",
-              "tooltip": "App tooltip",
-            },
-            undefined,
-          ],
-        ]
-      `);
+                      Array [
+                        Array [
+                          undefined,
+                          Object {
+                            "appName": "App name",
+                          },
+                          undefined,
+                        ],
+                        Array [
+                          Array [],
+                          Array [
+                            Object {
+                              "text": "App breadcrumb",
+                            },
+                          ],
+                          Array [],
+                        ],
+                        Array [
+                          undefined,
+                          Object {
+                            "text": "App badge",
+                            "tooltip": "App tooltip",
+                          },
+                          undefined,
+                        ],
+                      ]
+                  `);
     });
   });
 });

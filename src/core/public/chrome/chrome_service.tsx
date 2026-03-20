@@ -141,6 +141,7 @@ type CollapsibleNavHeaderRender = () => JSX.Element | null;
 export class ChromeService {
   private isVisible$!: Observable<boolean>;
   private isForceHidden$!: BehaviorSubject<boolean>;
+  private isEmbedded = false;
   private headerVariant$!: Observable<HeaderVariant | undefined>;
   private headerVariantOverride$!: BehaviorSubject<HeaderVariant | undefined>;
   private readonly stop$ = new ReplaySubject(1);
@@ -169,8 +170,8 @@ export class ChromeService {
    */
   private initVisibility(application: StartDeps['application']) {
     // Start off the chrome service hidden if "embed" is in the hash query string.
-    const isEmbedded = new URL(location.hash.slice(1), location.origin).searchParams.has('embed');
-    this.isForceHidden$ = new BehaviorSubject(isEmbedded);
+    this.isEmbedded = new URL(location.hash.slice(1), location.origin).searchParams.has('embed');
+    this.isForceHidden$ = new BehaviorSubject(this.isEmbedded);
 
     const appHidden$ = merge(
       // For the isVisible$ logic, having no mounted app is equivalent to having a hidden app
@@ -434,7 +435,14 @@ export class ChromeService {
 
       getIsVisible$: () => this.isVisible$,
 
-      setIsVisible: (isVisible: boolean) => this.isForceHidden$.next(!isVisible),
+      setIsVisible: (isVisible: boolean) => {
+        // In embed mode, the chrome should always stay hidden. Prevent any caller
+        // (e.g., full screen exit cleanup) from accidentally showing the header.
+        if (isVisible && this.isEmbedded) {
+          return;
+        }
+        this.isForceHidden$.next(!isVisible);
+      },
 
       getHeaderVariant$: () => this.headerVariant$,
 
